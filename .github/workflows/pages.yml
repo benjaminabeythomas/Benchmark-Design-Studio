@@ -16,16 +16,33 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
+      - run: npm test
       - run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Test before publishing
+        run: npx playwright test tests/studio.spec.ts
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify the actual published website
+        env:
+          STUDIO_URL: ${{ steps.deployment.outputs.page_url }}
+        run: npx playwright test tests/studio.spec.ts --retries=2
+      - name: Upload published-site browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-studio-browser-preview
+          path: test-results/
+          if-no-files-found: warn
