@@ -6,7 +6,7 @@ import type { SceneState } from './state';
 export type ViewMode='interior'|'orbit'|'walk'|'plan';
 export class StudioScene {
  readonly scene=new THREE.Scene();readonly camera=new THREE.PerspectiveCamera(49,1,.05,85);readonly renderer:THREE.WebGLRenderer;readonly controls:OrbitControls;
- state!:SceneState;mode:ViewMode='interior';private interior?:Interior;private geometryKey='';private keys=new Set<string>();private yaw=0;private pitch=0;private down=[0,0];private drag=false;private last=0;private frameId=0;private dirty=true;private tween?:{from:THREE.Vector3;to:THREE.Vector3;start:THREE.Vector3;target:THREE.Vector3;t:number};
+ state!:SceneState;mode:ViewMode='interior';private interior?:Interior;private geometryKey='';private keys=new Set<string>();private yaw=0;private pitch=0;private down=[0,0];private drag=false;private last=0;private frameId=0;private dirty=true;private tween?:{from:THREE.Vector3;to:THREE.Vector3;start:THREE.Vector3;target:THREE.Vector3;t:number;startedAt:number};
  private ray=new THREE.Raycaster();private observer:ResizeObserver;private sun:THREE.DirectionalLight;private fill:THREE.HemisphereLight;private environment:THREE.WebGLRenderTarget;private lighting:'day'|'golden'|'evening'='golden';private abort=new AbortController();
  constructor(private host:HTMLElement,private interact:(id:string)=>void){
   this.renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.shadowMap.autoUpdate=false;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1;this.renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -34,7 +34,7 @@ export class StudioScene {
   let position=new THREE.Vector3(2.8,1.95,3.35),target=new THREE.Vector3(-.5,1.25,-1.4);
   if(mode==='orbit'){position.set(8,7,9);target.set(-.4,.6,0);}if(mode==='plan'){position.set(0,13,.02);target.set(0,0,0);}
   if(this.state?.room==='bathroom'&&mode==='interior'){position.set(2.85,2,3.65);target.set(-.6,1.05,-1.15);}
-  if(animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches)this.tween={from:this.camera.position.clone(),to:position,start:this.controls.target.clone(),target,t:0};else{this.camera.position.copy(position);this.controls.target.copy(target);this.controls.update();}
+  if(animate&&!matchMedia('(prefers-reduced-motion: reduce)').matches)this.tween={from:this.camera.position.clone(),to:position,start:this.controls.target.clone(),target,t:0,startedAt:performance.now()};else{this.camera.position.copy(position);this.controls.target.copy(target);this.controls.update();}
  }
  home(){this.setMode('interior');}
  setLighting(value:'day'|'golden'|'evening'){this.lighting=value;const night=value==='evening';this.sun.intensity=night?.13:value==='day'?2.5:2.8;this.sun.color.set(value==='day'?0xfff2de:0xffd99f);this.sun.position.set(-6.7,value==='day'?10:5.5,4.3);this.fill.intensity=night?.22:.75;this.scene.environmentIntensity=night?.17:.42;this.scene.background=new THREE.Color(night?0x46525a:0xe0ddcf);if(this.scene.fog instanceof THREE.Fog)this.scene.fog.color.copy(this.scene.background);this.dirty=true;this.renderer.shadowMap.needsUpdate=true;}
@@ -48,15 +48,16 @@ export class StudioScene {
   if(this.state.room==='bathroom'&&((Math.abs(x+.48)<1.25&&Math.abs(z-.5)<.8)||(x>1.25&&z<-.8)))return false;return true;
  }
  private frame(t:number){
-  const dt=Math.min((t-this.last)/1000,.05);this.last=t;
+  // Keep collision steps short, but do not stretch visual transitions when frames are slow.
+  const elapsed=Math.max(0,(t-this.last)/1000),dt=Math.min(elapsed,.05),visualDelta=Math.min(elapsed,.5);this.last=t;
   if(this.mode==='walk'){
    let x=Number(this.keys.has('d')||this.keys.has('arrowright'))-Number(this.keys.has('a')||this.keys.has('arrowleft')),z=Number(this.keys.has('s')||this.keys.has('arrowdown'))-Number(this.keys.has('w')||this.keys.has('arrowup'));const n=Math.hypot(x,z)||1;x/=n;z/=n;
    const dx=(x*Math.cos(this.yaw)+z*Math.sin(this.yaw))*dt*1.9,dz=(-x*Math.sin(this.yaw)+z*Math.cos(this.yaw))*dt*1.9;
    if(this.state&&(dx||dz)){if(this.canWalk(this.camera.position.x+dx,this.camera.position.z))this.camera.position.x+=dx;if(this.canWalk(this.camera.position.x,this.camera.position.z+dz))this.camera.position.z+=dz;this.dirty=true;}this.camera.rotation.set(this.pitch,this.yaw,0,'YXZ');
-  }else{if(this.tween){const tw=this.tween;tw.t=Math.min(1,tw.t+dt/1.15);const k=tw.t*tw.t*(3-2*tw.t);this.camera.position.lerpVectors(tw.from,tw.to,k);this.controls.target.lerpVectors(tw.start,tw.target,k);this.dirty=true;if(tw.t===1)this.tween=undefined;}this.controls.update();}
+  }else{if(this.tween){const tw=this.tween;tw.t=THREE.MathUtils.clamp((t-tw.startedAt)/1150,0,1);const k=tw.t*tw.t*(3-2*tw.t);this.camera.position.lerpVectors(tw.from,tw.to,k);this.controls.target.lerpVectors(tw.start,tw.target,k);this.dirty=true;if(tw.t===1)this.tween=undefined;}this.controls.update();}
   if(this.interior&&this.state){
-   for(const h of this.interior.hinges){const on=this.state.opened[h.id]??this.state.opened['*']??false;const target=on?h.open:h.closed;const current=h.kind==='door'?h.group.rotation.y:h.group.position.z;if(Math.abs(current-target)>.0003){const next=THREE.MathUtils.damp(current,target,9,dt);if(h.kind==='door')h.group.rotation.y=next;else h.group.position.z=next;this.dirty=true;this.renderer.shadowMap.needsUpdate=true;}}
-   for(const l of this.interior.lights){const target=this.state.lights?l.userData.power*(this.lighting==='evening'?1.6:1):0;if(Math.abs(l.intensity-target)>.002){l.intensity=THREE.MathUtils.damp(l.intensity,target,7,dt);this.dirty=true;}}
+   for(const h of this.interior.hinges){const on=this.state.opened[h.id]??this.state.opened['*']??false;const target=on?h.open:h.closed;const current=h.kind==='door'?h.group.rotation.y:h.group.position.z;if(Math.abs(current-target)>.0003){const next=THREE.MathUtils.damp(current,target,9,visualDelta);if(h.kind==='door')h.group.rotation.y=next;else h.group.position.z=next;this.dirty=true;this.renderer.shadowMap.needsUpdate=true;}}
+   for(const l of this.interior.lights){const target=this.state.lights?l.userData.power*(this.lighting==='evening'?1.6:1):0;if(Math.abs(l.intensity-target)>.002){l.intensity=THREE.MathUtils.damp(l.intensity,target,7,visualDelta);this.dirty=true;}}
    this.interior.glow.emissiveIntensity=this.state.lights?2.1:0;this.interior.water.visible=this.state.opened.tap??false;
   }
   // Static views do not continuously redraw shadows and mirror render targets.
