@@ -1,7 +1,3 @@
 import { defineConfig } from '@playwright/test';
-export default defineConfig({
-  testDir: './tests',
-  use: { baseURL: 'http://127.0.0.1:5173', browserName: 'chromium', launchOptions: { args: ['--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader'] } },
-  webServer: { command: 'npm run dev -- --host 127.0.0.1', url: 'http://127.0.0.1:5173', reuseExistingServer: !process.env.CI, timeout: 60000 },
-  reporter: 'list',
-});
+const external=process.env.STUDIO_URL;
+export default defineConfig({testDir:'./tests',timeout:120000,workers:1,expect:{timeout:25000},use:{baseURL:external||'http://127.0.0.1:5173/Benchmark-Design-Studio/',viewport:{width:1512,height:945},browserName:'chromium',launchOptions:{args:['--enable-webgl','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']},screenshot:'only-on-failure'},webServer:external?undefined:{command:'npm run dev -- --host 127.0.0.1',url:'http://127.0.0.1:5173/Benchmark-Design-Studio/',reuseExistingServer:!process.env.CI,timeout:60000},reporter:'list'});
