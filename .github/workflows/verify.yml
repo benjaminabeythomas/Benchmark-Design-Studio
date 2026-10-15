@@ -25,3 +25,10 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Browser smoke test
         run: npx playwright test tests/studio.spec.ts
+      - name: Upload browser preview artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-browser-preview
+          path: test-results/studio-preview.png
+          if-no-files-found: warn
