@@ -24,6 +24,4 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Browser smoke test
-        run: |
-          npm run dev -- --host 127.0.0.1 > /tmp/studio-vite.log 2>&1 &
-          npx playwright test tests/studio.spec.ts --browser chromium
+        run: npx playwright test tests/studio.spec.ts
