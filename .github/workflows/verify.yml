@@ -1,0 +1,34 @@
+name: Verify Design Studio
+on:
+  push:
+    branches: [main, 'dev/**']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run state tests
+        run: npm test
+      - name: Type-check and build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke test
+        run: npx playwright test tests/studio.spec.ts
+      - name: Upload browser preview artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-browser-preview
+          path: test-results/studio-preview.png
+          if-no-files-found: warn
