@@ -15,5 +15,6 @@ test('renders interactive design studio and applies scene edits', async ({ page 
   await expect(page.locator('#message')).toContainText('Undone');
   await page.getByRole('button', { name: 'Export JSON' }).click();
   await expect(page.locator('#message')).toContainText('exported');
+  await page.screenshot({ path: 'artifacts/studio-preview.png', fullPage: true });
   expect(errors).toEqual([]);
 });
